@@ -103,6 +103,33 @@ Install library yang dibutuhkan:
 pip install -r requirements.txt
 ```
 
+## Deploy ke Streamlit Cloud
+
+Project ini sudah disiapkan agar bisa dijalankan di Streamlit Cloud.
+
+Langkah deploy:
+
+1. Push seluruh folder project ke repository GitHub.
+2. Buka Streamlit Cloud dan pilih repository tersebut.
+3. Isi main file path dengan:
+
+```text
+app.py
+```
+
+4. Pastikan file berikut ikut ada di repository:
+
+```text
+requirements.txt
+runtime.txt
+.streamlit/config.toml
+app.py
+src/
+output/hasil_umux_vader.csv
+```
+
+Jika `output/hasil_umux_vader.csv` tidak ikut di-upload ke repository, dashboard tetap bisa digunakan dengan memilih menu upload file hasil analisis pada sidebar aplikasi.
+
 ## Data Input
 
 Letakkan dataset review aplikasi JMO pada folder:
