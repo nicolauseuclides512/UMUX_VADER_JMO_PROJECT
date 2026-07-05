@@ -43,6 +43,7 @@ DISPLAY_COLUMNS = [
 
 SAMPLE_CSV_PATH = Path("output/sample_hasil_umux_vader.csv")
 SAMPLE_EXCEL_PATH = Path("output/sample_hasil_umux_vader.xlsx")
+TRAINING_REPORT_PATH = Path("output/training_classification_report.txt")
 
 
 @st.cache_data(show_spinner=False)
@@ -53,6 +54,11 @@ def read_csv(path):
 @st.cache_data(show_spinner=False)
 def read_excel(path):
     return pd.read_excel(path, sheet_name="detail_result")
+
+
+@st.cache_data(show_spinner=False)
+def read_text_file(path):
+    return Path(path).read_text(encoding="utf-8")
 
 
 def read_uploaded_file(uploaded_file):
@@ -187,6 +193,24 @@ def show_summary_metrics(df):
     col3.metric("Review Tidak Relevan", f"{total_irrelevant:,}")
     col4.metric("Rata-rata Compound", f"{avg_compound:.4f}")
     col5.metric("Rata-rata UMUX 1-7", f"{avg_umux_score:.2f}")
+
+
+def show_training_report():
+    if not TRAINING_REPORT_PATH.exists():
+        return
+
+    st.subheader("Evaluasi Training Model")
+
+    report_text = read_text_file(TRAINING_REPORT_PATH)
+    with st.expander("Lihat classification report UMUX-Lite labeler"):
+        st.code(report_text, language="text")
+
+    st.download_button(
+        label="Download classification report",
+        data=report_text.encode("utf-8"),
+        file_name=TRAINING_REPORT_PATH.name,
+        mime="text/plain",
+    )
 
 
 def show_label_distribution(df):
@@ -353,6 +377,9 @@ def main():
         st.stop()
 
     show_summary_metrics(filtered_df)
+
+    st.divider()
+    show_training_report()
 
     st.divider()
     col1, col2 = st.columns(2)
