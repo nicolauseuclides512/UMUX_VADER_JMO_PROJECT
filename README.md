@@ -126,9 +126,20 @@ runtime.txt
 app.py
 src/
 output/hasil_umux_vader.csv
+output/topic_summary.csv
+output/topic_keywords.csv
+output/document_topics.csv
 ```
 
 Jika `output/hasil_umux_vader.csv` tidak ikut di-upload ke repository, dashboard tetap bisa digunakan dengan memilih menu upload file hasil analisis pada sidebar aplikasi.
+
+Jika hasil topic modeling ingin ditampilkan di dashboard, jalankan:
+
+```bash
+python run_topic_modeling.py
+```
+
+Lalu pastikan file `output/topic_summary.csv`, `output/topic_keywords.csv`, dan `output/document_topics.csv` ikut di-push ke GitHub.
 
 ## Data Input
 

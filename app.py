@@ -44,6 +44,9 @@ DISPLAY_COLUMNS = [
 SAMPLE_CSV_PATH = Path("output/sample_hasil_umux_vader.csv")
 SAMPLE_EXCEL_PATH = Path("output/sample_hasil_umux_vader.xlsx")
 TRAINING_REPORT_PATH = Path("output/training_classification_report.txt")
+TOPIC_SUMMARY_PATH = Path("output/topic_summary.csv")
+TOPIC_KEYWORDS_PATH = Path("output/topic_keywords.csv")
+DOCUMENT_TOPICS_PATH = Path("output/document_topics.csv")
 
 
 @st.cache_data(show_spinner=False)
@@ -213,6 +216,188 @@ def show_training_report():
     )
 
 
+def load_topic_modeling_data():
+    topic_summary = read_csv(TOPIC_SUMMARY_PATH) if TOPIC_SUMMARY_PATH.exists() else None
+    topic_keywords = read_csv(TOPIC_KEYWORDS_PATH) if TOPIC_KEYWORDS_PATH.exists() else None
+    document_topics = read_csv(DOCUMENT_TOPICS_PATH) if DOCUMENT_TOPICS_PATH.exists() else None
+
+    return topic_summary, topic_keywords, document_topics
+
+
+def filter_topic_dataframe(df, selected_dimensions):
+    if df is None or df.empty or "umux_dimension" not in df.columns:
+        return df
+
+    return df[df["umux_dimension"].astype(str).isin(selected_dimensions)].copy()
+
+
+def show_topic_modeling_results():
+    topic_summary, topic_keywords, document_topics = load_topic_modeling_data()
+
+    if topic_summary is None or topic_summary.empty:
+        return
+
+    st.subheader("Topic Modeling UMUX-Lite")
+
+    dimension_options = sorted(topic_summary["umux_dimension"].dropna().astype(str).unique())
+    if not dimension_options:
+        st.info("File topic modeling belum memiliki kolom dimensi yang bisa ditampilkan.")
+        return
+
+    selected_dimensions = st.multiselect(
+        "Filter dimensi topic modeling",
+        options=dimension_options,
+        default=dimension_options,
+    )
+
+    if not selected_dimensions:
+        st.warning("Pilih minimal satu dimensi untuk menampilkan topic modeling.")
+        return
+
+    filtered_summary = filter_topic_dataframe(topic_summary, selected_dimensions)
+    filtered_keywords = filter_topic_dataframe(topic_keywords, selected_dimensions)
+    filtered_documents = filter_topic_dataframe(document_topics, selected_dimensions)
+
+    if filtered_summary.empty:
+        st.warning("Tidak ada topic modeling yang sesuai dengan filter.")
+        return
+
+    total_topics = len(filtered_summary)
+    total_topic_reviews = int(filtered_summary["total_review"].sum())
+    avg_topic_score = (
+        filtered_summary["avg_umux_score_1_7"].mean()
+        if "avg_umux_score_1_7" in filtered_summary.columns
+        else 0
+    )
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Topik", f"{total_topics:,}")
+    col2.metric("Review Bertopik", f"{total_topic_reviews:,}")
+    col3.metric("Rata-rata UMUX Topik", f"{avg_topic_score:.2f}")
+
+    display_summary = filtered_summary.copy()
+    display_summary["topic_label"] = (
+        display_summary["umux_dimension"].astype(str)
+        + " - Topik "
+        + display_summary["topic_id"].astype(str)
+    )
+
+    topic_hover_columns = [
+        column
+        for column in [
+            "top_keywords",
+            "topic_interpretation_initial",
+            "avg_vader_compound",
+            "avg_umux_score_1_7",
+        ]
+        if column in display_summary.columns
+    ]
+
+    fig = px.bar(
+        display_summary.sort_values("total_review", ascending=True),
+        x="total_review",
+        y="topic_label",
+        color="umux_dimension",
+        orientation="h",
+        text="total_review",
+        hover_data=topic_hover_columns,
+        title="Jumlah Review per Topik",
+    )
+    fig.update_layout(xaxis_title="Jumlah Review", yaxis_title="Topik")
+    st.plotly_chart(fig, use_container_width=True)
+
+    tab_summary, tab_keywords, tab_documents = st.tabs(
+        ["Ringkasan Topik", "Keyword Topik", "Dokumen Bertopik"]
+    )
+
+    with tab_summary:
+        summary_columns = [
+            "umux_label",
+            "umux_dimension",
+            "topic_id",
+            "total_review",
+            "top_keywords",
+            "topic_interpretation_initial",
+            "positive_count",
+            "neutral_count",
+            "negative_count",
+            "positive_percentage",
+            "neutral_percentage",
+            "negative_percentage",
+            "avg_vader_compound",
+            "avg_umux_score_1_7",
+        ]
+        available_summary_columns = [
+            column for column in summary_columns if column in filtered_summary.columns
+        ]
+        st.dataframe(
+            filtered_summary[available_summary_columns],
+            use_container_width=True,
+            height=360,
+        )
+
+    with tab_keywords:
+        if filtered_keywords is None or filtered_keywords.empty:
+            st.info("File topic_keywords.csv belum tersedia.")
+        else:
+            st.dataframe(filtered_keywords, use_container_width=True, height=360)
+
+    with tab_documents:
+        if filtered_documents is None or filtered_documents.empty:
+            st.info("File document_topics.csv belum tersedia.")
+        else:
+            document_columns = [
+                TEXT_COLUMN,
+                CLEAN_TEXT_COLUMN,
+                "umux_dimension",
+                "topic_id",
+                "topic_score",
+                SENTIMENT_CATEGORY_COLUMN,
+                VADER_COMPOUND_COLUMN,
+                UMUX_SCORE_COLUMN,
+            ]
+            available_document_columns = [
+                column for column in document_columns if column in filtered_documents.columns
+            ]
+            st.dataframe(
+                filtered_documents[available_document_columns],
+                use_container_width=True,
+                height=420,
+            )
+
+    download_col1, download_col2, download_col3 = st.columns(3)
+
+    with download_col1:
+        st.download_button(
+            label="Download topic summary",
+            data=filtered_summary.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
+            file_name="filtered_topic_summary.csv",
+            mime="text/csv",
+        )
+
+    if filtered_keywords is not None and not filtered_keywords.empty:
+        with download_col2:
+            st.download_button(
+                label="Download topic keywords",
+                data=filtered_keywords.to_csv(index=False, encoding="utf-8-sig").encode(
+                    "utf-8-sig"
+                ),
+                file_name="filtered_topic_keywords.csv",
+                mime="text/csv",
+            )
+
+    if filtered_documents is not None and not filtered_documents.empty:
+        with download_col3:
+            st.download_button(
+                label="Download document topics",
+                data=filtered_documents.to_csv(index=False, encoding="utf-8-sig").encode(
+                    "utf-8-sig"
+                ),
+                file_name="filtered_document_topics.csv",
+                mime="text/csv",
+            )
+
+
 def show_label_distribution(df):
     st.subheader("Distribusi Label UMUX-Lite")
 
@@ -380,6 +565,9 @@ def main():
 
     st.divider()
     show_training_report()
+
+    st.divider()
+    show_topic_modeling_results()
 
     st.divider()
     col1, col2 = st.columns(2)
