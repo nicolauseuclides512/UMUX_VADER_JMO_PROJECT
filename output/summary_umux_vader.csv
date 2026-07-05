@@ -1,0 +1,6 @@
+﻿metric,value
+total_review,13104.0
+total_relevant_umux_review,6101.0
+total_irrelevant_review,7003.0
+average_vader_compound,0.3102
+average_umux_lite_score_1_7,4.932

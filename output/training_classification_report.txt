@@ -1,0 +1,15 @@
+Classification Report UMUX-Lite Labeler
+======================================
+
+Accuracy: 0.6581
+
+                                precision    recall  f1-score   support
+
+Tidak relevan dengan UMUX-Lite       0.76      0.84      0.80      1283
+                    Usefulness       0.67      0.49      0.57       668
+                   Ease of Use       0.53      0.54      0.53       490
+      Usefulness + Ease of Use       0.25      0.28      0.27       180
+
+                      accuracy                           0.66      2621
+                     macro avg       0.55      0.54      0.54      2621
+                  weighted avg       0.66      0.66      0.65      2621

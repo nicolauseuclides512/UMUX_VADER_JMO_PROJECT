@@ -1,0 +1,6 @@
+﻿predicted_umux_label,predicted_umux_dimension,sentiment_category,vader_compound,umux_lite_score_1_7
+1,Usefulness,positive,0.8,6.4
+2,Ease of Use,negative,-0.6,2.2
+3,Usefulness + Ease of Use,positive,0.4,5.2
+0,Tidak relevan dengan UMUX-Lite,neutral,0.0,4.0
+1,Usefulness,positive,0.7,6.1

@@ -1,0 +1,11 @@
+pandas
+numpy
+openpyxl
+scikit-learn
+joblib
+Sastrawi
+nltk
+matplotlib
+streamlit
+plotly
+imbalanced-learn

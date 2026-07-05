@@ -1,0 +1,13 @@
+Ringkasan Hasil Analisis UMUX-Lite dan VADER
+===========================================
+
+Total review                         : 5
+Review relevan UMUX-Lite             : 4
+Review tidak relevan UMUX-Lite       : 1
+
+Jumlah sentimen positif              : 3
+Jumlah sentimen netral               : 1
+Jumlah sentimen negatif              : 1
+
+Rata-rata VADER compound score       : 0.2600
+Rata-rata UMUX-Lite score 1–7        : 4.9750
