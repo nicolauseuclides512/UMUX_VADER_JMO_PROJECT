@@ -1,0 +1,16 @@
+﻿umux_label,umux_dimension,topic_id,total_review,top_keywords,topic_interpretation_initial,positive_count,neutral_count,negative_count,positive_percentage,neutral_percentage,negative_percentage,avg_vader_compound,avg_umux_score_1_7
+1,Usefulness,1,1309,"bantu, bantu kerja, kerja, saldo, mudah, yg, yg bantu, kece, bpjs, bantu mudah","Layanan klaim, saldo, atau pencairan",991,159,159,75.71,12.15,12.15,0.3757,5.127
+1,Usefulness,2,306,"manfaat, kerja, moga, moga manfaat, bantu manfaat, mudah, tua, manfaat kerja, manfaat semua, bintang",Manfaat aplikasi dan dukungan layanan,213,48,44,69.61,15.69,14.38,0.331,4.9932
+1,Usefulness,3,144,"muas, layan muas, muas layan, muas mudah, trimakasih, simple, yg muas, mudah, cepat muas, sesuai",Kemudahan atau kesulitan penggunaan,99,32,13,68.75,22.22,9.03,0.3311,4.9935
+1,Usefulness,4,148,"puas, puas layan, puas bantu, bantu puas, layan puas, selalu, gampang, trimakasih, sngat, hasil",Manfaat aplikasi dan dukungan layanan,117,13,18,79.05,8.78,12.16,0.3859,5.1581
+1,Usefulness,5,746,"layan, layan muas, cepat, layan cepat, puas layan, atas, atas layan, cepat layan, ramah, muas layan",Topik umum berdasarkan kata kunci dominan,515,117,114,69.03,15.68,15.28,0.3336,5.0011
+2,Ease of Use,1,467,"mudah, paham, mudah paham, erti, mudah erti, proses, cepat mudah, mudah proses, klaim, saldo","Layanan klaim, saldo, atau pencairan",314,70,83,67.24,14.99,17.77,0.2947,4.884
+2,Ease of Use,2,577,"bisa buka, buka, tidak bisa, bisa, tidak, hp, terus, henti, buka hp, buka sama",Topik umum berdasarkan kata kunci dominan,356,79,142,61.7,13.69,24.61,0.2439,4.7315
+2,Ease of Use,3,1030,"login, bisa login, tidak bisa, bisa, tidak, masuk, bisa masuk, login tidak, email, update","Masalah login, akses, atau verifikasi",619,150,260,60.1,14.56,25.24,0.2194,4.6583
+2,Ease of Use,4,287,"cepat, cepat mudah, layan, layan cepat, proses, proses cepat, mudah cepat, cair, mudah proses, aman","Layanan klaim, saldo, atau pencairan",209,37,41,72.82,12.89,14.29,0.3645,5.0939
+2,Ease of Use,5,111,"akses, mudah akses, akses mudah, ribet, gampang, tidak ribet, manfaat, bisa akses, akses tidak, simple","Masalah login, akses, atau verifikasi",78,16,17,70.27,14.41,15.32,0.3418,5.0253
+3,Usefulness + Ease of Use,1,138,"mudah, mudah cepat, akses, mudah akses, manfaat, saldo, manfaat mudah, cair, praktis, paham","Layanan klaim, saldo, atau pencairan",99,22,17,71.74,15.94,12.32,0.3688,5.1067
+3,Usefulness + Ease of Use,2,158,"cepat, mudah cepat, proses, akurat, cepat akurat, proses cepat, cepat proses, cepat bantu, layan, cepat mudah",Manfaat aplikasi dan dukungan layanan,124,13,21,78.48,8.23,13.29,0.4577,5.3732
+3,Usefulness + Ease of Use,3,57,"bantu mudah, bantu, mudah, mudah paham, paham, mudah erti, erti, mudah urus, bisa bantu, cepat bantu",Manfaat aplikasi dan dukungan layanan,37,10,10,64.91,17.54,17.54,0.3607,5.0823
+3,Usefulness + Ease of Use,4,544,"tidak, klaim, sulit, bisa, jht, mau, proses, klaim jht, tidak bisa, cair","Layanan klaim, saldo, atau pencairan",342,78,124,62.87,14.34,22.79,0.2378,4.7137
+3,Usefulness + Ease of Use,5,79,"mudah bantu, bantu, mudah, ramah, layan, cepat bantu, bantu cepat, bantu cek, bantu suka, bantu klaim","Layanan klaim, saldo, atau pencairan",54,13,11,68.35,16.46,13.92,0.3596,5.0794
