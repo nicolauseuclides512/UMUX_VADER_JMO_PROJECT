@@ -63,7 +63,14 @@ def read_csv(path):
 
 @st.cache_data(show_spinner=False)
 def read_excel(path, sheet_name="detail_result"):
-    return pd.read_excel(path, sheet_name=sheet_name)
+    try:
+        return pd.read_excel(path, sheet_name=sheet_name)
+    except ValueError:
+        sheets = pd.read_excel(path, sheet_name=None)
+        if not sheets:
+            return pd.DataFrame()
+
+        return next(iter(sheets.values()))
 
 
 @st.cache_data(show_spinner=False)
@@ -80,7 +87,15 @@ def read_uploaded_file(uploaded_file):
     if uploaded_file.name.lower().endswith(".csv"):
         return pd.read_csv(uploaded_file)
 
-    return pd.read_excel(uploaded_file, sheet_name="detail_result")
+    try:
+        return pd.read_excel(uploaded_file, sheet_name="detail_result")
+    except ValueError:
+        uploaded_file.seek(0)
+        sheets = pd.read_excel(uploaded_file, sheet_name=None)
+        if not sheets:
+            return pd.DataFrame()
+
+        return next(iter(sheets.values()))
 
 
 def load_repository_result():
@@ -278,6 +293,10 @@ def available_columns(df, columns):
 
 
 def show_summary_metrics(df):
+    if df.empty:
+        st.info("Tidak ada data untuk diringkas.")
+        return
+
     total_review = len(df)
     relevant_df = df[df[PREDICTED_LABEL_COLUMN].isin([1, 2, 3])].copy()
     total_relevant = len(relevant_df)
@@ -321,15 +340,29 @@ def show_dataset_overview(df):
         date_df = df.dropna(subset=[DATE_COLUMN]).copy()
         date_df["tanggal"] = date_df[DATE_COLUMN].dt.date
         trend_df = date_df.groupby("tanggal").size().reset_index(name="total_review")
-        fig = px.line(trend_df, x="tanggal", y="total_review", markers=True, title="Tren Jumlah Review")
-        fig.update_layout(xaxis_title="Tanggal", yaxis_title="Jumlah Review")
-        st.plotly_chart(fig, use_container_width=True, key="dataset_review_trend_chart")
+        if not trend_df.empty:
+            fig = px.line(
+                trend_df,
+                x="tanggal",
+                y="total_review",
+                markers=True,
+                title="Tren Jumlah Review",
+            )
+            fig.update_layout(xaxis_title="Tanggal", yaxis_title="Jumlah Review")
+            st.plotly_chart(fig, use_container_width=True, key="dataset_review_trend_chart")
 
     if RATING_COLUMN in df.columns and df[RATING_COLUMN].notna().any():
         rating_df = df[RATING_COLUMN].value_counts().sort_index().reset_index()
         rating_df.columns = ["rating", "total_review"]
-        fig = px.bar(rating_df, x="rating", y="total_review", text="total_review", title="Distribusi Rating")
-        st.plotly_chart(fig, use_container_width=True, key="dataset_rating_distribution_chart")
+        if not rating_df.empty:
+            fig = px.bar(
+                rating_df,
+                x="rating",
+                y="total_review",
+                text="total_review",
+                title="Distribusi Rating",
+            )
+            st.plotly_chart(fig, use_container_width=True, key="dataset_rating_distribution_chart")
 
 
 def show_umux_analysis(df):
@@ -345,6 +378,10 @@ def show_umux_analysis(df):
 
 def show_vader_analysis(df):
     st.subheader("VADER Sentiment Analysis")
+    if df.empty:
+        st.info("Tidak ada data sentimen untuk ditampilkan.")
+        return
+
     col1, col2 = st.columns(2)
     with col1:
         show_sentiment_distribution(df, "vader_sentiment_distribution")
@@ -357,18 +394,26 @@ def show_vader_analysis(df):
             )
             .reset_index()
         )
-        fig = px.bar(
-            sentiment_score_df,
-            x=SENTIMENT_CATEGORY_COLUMN,
-            y="avg_compound",
-            text=sentiment_score_df["avg_compound"].round(4),
-            title="Rata-rata Compound per Sentimen",
-        )
-        st.plotly_chart(fig, use_container_width=True, key="vader_avg_compound_chart")
+        if not sentiment_score_df.empty:
+            sentiment_score_df["avg_compound_text"] = sentiment_score_df[
+                "avg_compound"
+            ].round(4)
+            fig = px.bar(
+                sentiment_score_df,
+                x=SENTIMENT_CATEGORY_COLUMN,
+                y="avg_compound",
+                text="avg_compound_text",
+                title="Rata-rata Compound per Sentimen",
+            )
+            st.plotly_chart(fig, use_container_width=True, key="vader_avg_compound_chart")
 
 
 def show_umux_vader_analysis(df):
     st.subheader("UMUX-Lite x VADER Analysis")
+    if df.empty:
+        st.info("Tidak ada data UMUX x VADER untuk ditampilkan.")
+        return
+
     show_compound_vs_umux_score(df, "umux_vader_scatter_chart")
 
     heatmap_df = (
@@ -376,14 +421,20 @@ def show_umux_vader_analysis(df):
         .size()
         .reset_index(name="total_review")
     )
-    fig = px.density_heatmap(
+    if heatmap_df.empty:
+        st.info("Data heatmap UMUX x VADER belum tersedia.")
+        return
+
+    fig = px.bar(
         heatmap_df,
-        x=SENTIMENT_CATEGORY_COLUMN,
-        y=PREDICTED_DIMENSION_COLUMN,
-        z="total_review",
-        text_auto=True,
+        x=PREDICTED_DIMENSION_COLUMN,
+        y="total_review",
+        color=SENTIMENT_CATEGORY_COLUMN,
+        text="total_review",
+        barmode="group",
         title="Distribusi UMUX-Lite x Sentimen",
     )
+    fig.update_layout(xaxis_title="Dimensi UMUX-Lite", yaxis_title="Jumlah Review")
     st.plotly_chart(fig, use_container_width=True, key="umux_vader_heatmap_chart")
 
 
@@ -494,25 +545,39 @@ def show_topic_sentiment_interpretation(topic_summary, selected_topics):
         return
 
     filtered_summary = filter_topic_dataframe(topic_summary, selected_topics)
-    required_columns = ["topic_label", "positive_count", "neutral_count", "negative_count"]
+    required_columns = [
+        "topic_label",
+        "umux_dimension",
+        "positive_count",
+        "neutral_count",
+        "negative_count",
+    ]
     if filtered_summary.empty or not set(required_columns).issubset(filtered_summary.columns):
         st.info("Ringkasan topic x sentiment belum tersedia.")
         return
 
+    topic_id_columns = available_columns(
+        filtered_summary,
+        ["topic_label", "umux_dimension", "top_keywords", "topic_interpretation_initial"],
+    )
     melted_df = filtered_summary.melt(
-        id_vars=["topic_label", "umux_dimension", "top_keywords", "topic_interpretation_initial"],
+        id_vars=topic_id_columns,
         value_vars=["positive_count", "neutral_count", "negative_count"],
         var_name="sentiment",
         value_name="total_review",
     )
     melted_df["sentiment"] = melted_df["sentiment"].str.replace("_count", "", regex=False)
 
+    hover_columns = available_columns(
+        melted_df,
+        ["top_keywords", "topic_interpretation_initial"],
+    )
     fig = px.bar(
         melted_df,
         x="topic_label",
         y="total_review",
         color="sentiment",
-        hover_data=["top_keywords", "topic_interpretation_initial"],
+        hover_data=hover_columns,
         title="Komposisi Sentimen per Topik",
     )
     fig.update_layout(xaxis_title="Topik", yaxis_title="Jumlah Review", xaxis_tickangle=-35)
@@ -660,6 +725,10 @@ def show_data_explorer(df):
 def show_label_distribution(df, chart_key):
     label_df = df[PREDICTED_LABEL_COLUMN].value_counts().sort_index().reset_index()
     label_df.columns = ["label", "total_review"]
+    if label_df.empty:
+        st.info("Tidak ada distribusi label untuk ditampilkan.")
+        return
+
     fig = px.bar(
         label_df,
         x="label",
@@ -674,6 +743,10 @@ def show_label_distribution(df, chart_key):
 def show_dimension_distribution(df, chart_key):
     dimension_df = df[PREDICTED_DIMENSION_COLUMN].value_counts().reset_index()
     dimension_df.columns = ["dimension", "total_review"]
+    if dimension_df.empty:
+        st.info("Tidak ada distribusi dimensi untuk ditampilkan.")
+        return
+
     fig = px.bar(
         dimension_df,
         x="total_review",
@@ -689,6 +762,10 @@ def show_dimension_distribution(df, chart_key):
 def show_sentiment_distribution(df, chart_key):
     sentiment_df = df[SENTIMENT_CATEGORY_COLUMN].value_counts().reset_index()
     sentiment_df.columns = ["sentiment_category", "total_review"]
+    if sentiment_df.empty:
+        st.info("Tidak ada distribusi sentimen untuk ditampilkan.")
+        return
+
     fig = px.pie(
         sentiment_df,
         names="sentiment_category",
@@ -727,6 +804,10 @@ def show_umux_score_by_dimension(df, chart_key):
 
 
 def show_compound_vs_umux_score(df, chart_key):
+    if df.empty:
+        st.info("Tidak ada data scatter untuk ditampilkan.")
+        return
+
     hover_columns = available_columns(
         df,
         [TEXT_COLUMN, PREDICTED_DIMENSION_COLUMN, SENTIMENT_CATEGORY_COLUMN, RATING_COLUMN],
