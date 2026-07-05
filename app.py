@@ -158,12 +158,14 @@ def render_data_source_control():
     source = st.sidebar.radio(
         "Pilih sumber data",
         options=["File output repository", "Upload file hasil analisis"],
+        key="data_source_radio",
     )
 
     if source == "Upload file hasil analisis":
         uploaded_file = st.sidebar.file_uploader(
             "Upload CSV/XLSX hasil pipeline",
             type=["csv", "xlsx"],
+            key="pipeline_result_uploader",
         )
 
         if uploaded_file is None:
@@ -207,6 +209,7 @@ def apply_sidebar_filters(df, document_topics):
             "Rating",
             options=rating_options,
             default=rating_options,
+            key="sidebar_rating_filter",
         )
         filtered_df = filtered_df[filtered_df[RATING_COLUMN].isin(selected_ratings)]
 
@@ -215,6 +218,7 @@ def apply_sidebar_filters(df, document_topics):
         "Label UMUX-Lite",
         options=label_options,
         default=label_options,
+        key="sidebar_umux_label_filter",
     )
     filtered_df = filtered_df[filtered_df[PREDICTED_LABEL_COLUMN].isin(selected_labels)]
 
@@ -223,6 +227,7 @@ def apply_sidebar_filters(df, document_topics):
         "Sentiment category",
         options=sentiment_options,
         default=sentiment_options,
+        key="sidebar_sentiment_filter",
     )
     filtered_df = filtered_df[
         filtered_df[SENTIMENT_CATEGORY_COLUMN].astype(str).isin(selected_sentiments)
@@ -235,6 +240,7 @@ def apply_sidebar_filters(df, document_topics):
             "Topic",
             options=topic_options,
             default=topic_options,
+            key="sidebar_topic_filter",
         )
 
         if set(selected_topics) != set(topic_options):
@@ -250,6 +256,7 @@ def apply_sidebar_filters(df, document_topics):
             value=(min_date, max_date),
             min_value=min_date,
             max_value=max_date,
+            key="sidebar_date_range_filter",
         )
 
         if isinstance(selected_date_range, tuple) and len(selected_date_range) == 2:
@@ -292,9 +299,9 @@ def show_main_summary(df):
 
     col1, col2 = st.columns(2)
     with col1:
-        show_label_distribution(df)
+        show_label_distribution(df, "summary_label_distribution")
     with col2:
-        show_sentiment_distribution(df)
+        show_sentiment_distribution(df, "summary_sentiment_distribution")
 
     if SUMMARY_REPORT_PATH.exists():
         with st.expander("Ringkasan teks hasil analisis"):
@@ -316,31 +323,31 @@ def show_dataset_overview(df):
         trend_df = date_df.groupby("tanggal").size().reset_index(name="total_review")
         fig = px.line(trend_df, x="tanggal", y="total_review", markers=True, title="Tren Jumlah Review")
         fig.update_layout(xaxis_title="Tanggal", yaxis_title="Jumlah Review")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="dataset_review_trend_chart")
 
     if RATING_COLUMN in df.columns and df[RATING_COLUMN].notna().any():
         rating_df = df[RATING_COLUMN].value_counts().sort_index().reset_index()
         rating_df.columns = ["rating", "total_review"]
         fig = px.bar(rating_df, x="rating", y="total_review", text="total_review", title="Distribusi Rating")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="dataset_rating_distribution_chart")
 
 
 def show_umux_analysis(df):
     st.subheader("UMUX-Lite Analysis")
     col1, col2 = st.columns(2)
     with col1:
-        show_label_distribution(df)
+        show_label_distribution(df, "umux_label_distribution")
     with col2:
-        show_dimension_distribution(df)
+        show_dimension_distribution(df, "umux_dimension_distribution")
 
-    show_umux_score_by_dimension(df)
+    show_umux_score_by_dimension(df, "umux_score_by_dimension")
 
 
 def show_vader_analysis(df):
     st.subheader("VADER Sentiment Analysis")
     col1, col2 = st.columns(2)
     with col1:
-        show_sentiment_distribution(df)
+        show_sentiment_distribution(df, "vader_sentiment_distribution")
     with col2:
         sentiment_score_df = (
             df.groupby(SENTIMENT_CATEGORY_COLUMN)
@@ -357,12 +364,12 @@ def show_vader_analysis(df):
             text=sentiment_score_df["avg_compound"].round(4),
             title="Rata-rata Compound per Sentimen",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="vader_avg_compound_chart")
 
 
 def show_umux_vader_analysis(df):
     st.subheader("UMUX-Lite x VADER Analysis")
-    show_compound_vs_umux_score(df)
+    show_compound_vs_umux_score(df, "umux_vader_scatter_chart")
 
     heatmap_df = (
         df.groupby([PREDICTED_DIMENSION_COLUMN, SENTIMENT_CATEGORY_COLUMN])
@@ -377,7 +384,7 @@ def show_umux_vader_analysis(df):
         text_auto=True,
         title="Distribusi UMUX-Lite x Sentimen",
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="umux_vader_heatmap_chart")
 
 
 def filter_topic_dataframe(df, selected_topics):
@@ -432,20 +439,30 @@ def show_topic_modeling_results(topic_summary, topic_keywords, document_topics, 
         title="Jumlah Review per Topik",
     )
     fig.update_layout(xaxis_title="Jumlah Review", yaxis_title="Topik")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="topic_review_count_chart")
 
     tab_summary, tab_keywords, tab_documents = st.tabs(
         ["Ringkasan Topik", "Keyword Topik", "Dokumen Bertopik"]
     )
 
     with tab_summary:
-        st.dataframe(filtered_summary, use_container_width=True, height=360)
+        st.dataframe(
+            filtered_summary,
+            use_container_width=True,
+            height=360,
+            key="topic_summary_table",
+        )
 
     with tab_keywords:
         if filtered_keywords is None or filtered_keywords.empty:
             st.info("File topic_keywords.csv belum tersedia.")
         else:
-            st.dataframe(filtered_keywords, use_container_width=True, height=360)
+            st.dataframe(
+                filtered_keywords,
+                use_container_width=True,
+                height=360,
+                key="topic_keywords_table",
+            )
 
     with tab_documents:
         if filtered_documents is None or filtered_documents.empty:
@@ -465,6 +482,7 @@ def show_topic_modeling_results(topic_summary, topic_keywords, document_topics, 
                 filtered_documents[available_columns(filtered_documents, document_columns)],
                 use_container_width=True,
                 height=420,
+                key="topic_documents_table",
             )
 
 
@@ -498,7 +516,7 @@ def show_topic_sentiment_interpretation(topic_summary, selected_topics):
         title="Komposisi Sentimen per Topik",
     )
     fig.update_layout(xaxis_title="Topik", yaxis_title="Jumlah Review", xaxis_tickangle=-35)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="topic_sentiment_composition_chart")
 
     interpretation_columns = [
         "topic_label",
@@ -514,6 +532,7 @@ def show_topic_sentiment_interpretation(topic_summary, selected_topics):
         filtered_summary[available_columns(filtered_summary, interpretation_columns)],
         use_container_width=True,
         height=360,
+        key="topic_sentiment_interpretation_table",
     )
 
 
@@ -528,6 +547,7 @@ def show_model_evaluation():
             data=report_text.encode("utf-8"),
             file_name=TRAINING_REPORT_PATH.name,
             mime="text/plain",
+            key="download_classification_report",
         )
     else:
         st.info("File training_classification_report.txt belum tersedia.")
@@ -537,7 +557,12 @@ def show_model_evaluation():
             sheets = read_excel_sheets(TRAINING_EVALUATION_PATH)
             for sheet_name, sheet_df in sheets.items():
                 st.write(sheet_name)
-                st.dataframe(sheet_df, use_container_width=True, height=260)
+                st.dataframe(
+                    sheet_df,
+                    use_container_width=True,
+                    height=260,
+                    key=f"training_evaluation_{sheet_name}",
+                )
 
 
 def show_misclassification_analysis(filtered_df):
@@ -579,7 +604,7 @@ def show_misclassification_analysis(filtered_df):
             text="total_review",
             title="Distribusi Tipe Kesalahan Klasifikasi",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="misclassification_error_type_chart")
 
     table_columns = [
         TEXT_COLUMN,
@@ -597,6 +622,7 @@ def show_misclassification_analysis(filtered_df):
         misclassified_df[available_columns(misclassified_df, table_columns)],
         use_container_width=True,
         height=460,
+        key="misclassification_table",
     )
 
 
@@ -608,23 +634,30 @@ def show_data_explorer(df):
         "Pilih kolom",
         options=list(df.columns),
         default=default_columns or list(df.columns),
+        key="data_explorer_column_selector",
     )
 
     if not selected_columns:
         st.warning("Pilih minimal satu kolom.")
         return
 
-    st.dataframe(df[selected_columns], use_container_width=True, height=560)
+    st.dataframe(
+        df[selected_columns],
+        use_container_width=True,
+        height=560,
+        key="data_explorer_table",
+    )
     csv_data = df[selected_columns].to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
     st.download_button(
         label="Download data terfilter sebagai CSV",
         data=csv_data,
         file_name="filtered_umux_vader_result.csv",
         mime="text/csv",
+        key="download_filtered_data_csv",
     )
 
 
-def show_label_distribution(df):
+def show_label_distribution(df, chart_key):
     label_df = df[PREDICTED_LABEL_COLUMN].value_counts().sort_index().reset_index()
     label_df.columns = ["label", "total_review"]
     fig = px.bar(
@@ -635,10 +668,10 @@ def show_label_distribution(df):
         title="Jumlah Review Berdasarkan Label UMUX-Lite",
     )
     fig.update_layout(xaxis_title="Label UMUX-Lite", yaxis_title="Jumlah Review")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=chart_key)
 
 
-def show_dimension_distribution(df):
+def show_dimension_distribution(df, chart_key):
     dimension_df = df[PREDICTED_DIMENSION_COLUMN].value_counts().reset_index()
     dimension_df.columns = ["dimension", "total_review"]
     fig = px.bar(
@@ -650,10 +683,10 @@ def show_dimension_distribution(df):
         title="Jumlah Review Berdasarkan Dimensi UMUX-Lite",
     )
     fig.update_layout(xaxis_title="Jumlah Review", yaxis_title="Dimensi UMUX-Lite")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=chart_key)
 
 
-def show_sentiment_distribution(df):
+def show_sentiment_distribution(df, chart_key):
     sentiment_df = df[SENTIMENT_CATEGORY_COLUMN].value_counts().reset_index()
     sentiment_df.columns = ["sentiment_category", "total_review"]
     fig = px.pie(
@@ -663,10 +696,10 @@ def show_sentiment_distribution(df):
         title="Proporsi Sentimen VADER",
         hole=0.35,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=chart_key)
 
 
-def show_umux_score_by_dimension(df):
+def show_umux_score_by_dimension(df, chart_key):
     relevant_df = df[df[PREDICTED_LABEL_COLUMN].isin([1, 2, 3])].copy()
     if relevant_df.empty:
         st.info("Belum ada review relevan UMUX-Lite pada data terfilter.")
@@ -690,10 +723,10 @@ def show_umux_score_by_dimension(df):
         yaxis_title="Rata-rata Skor UMUX-Lite",
         yaxis_range=[1, 7],
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=chart_key)
 
 
-def show_compound_vs_umux_score(df):
+def show_compound_vs_umux_score(df, chart_key):
     hover_columns = available_columns(
         df,
         [TEXT_COLUMN, PREDICTED_DIMENSION_COLUMN, SENTIMENT_CATEGORY_COLUMN, RATING_COLUMN],
@@ -710,7 +743,7 @@ def show_compound_vs_umux_score(df):
         xaxis_title="VADER Compound Score",
         yaxis_title="UMUX-Lite Score 1-7",
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=chart_key)
 
 
 def main():
