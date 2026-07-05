@@ -6,10 +6,12 @@ import streamlit as st
 
 from src.config import (
     CLEAN_TEXT_COLUMN,
+    DATE_COLUMN,
     OUTPUT_CSV_PATH,
     OUTPUT_EXCEL_PATH,
     PREDICTED_DIMENSION_COLUMN,
     PREDICTED_LABEL_COLUMN,
+    RATING_COLUMN,
     SENTIMENT_CATEGORY_COLUMN,
     TEXT_COLUMN,
     UMUX_SCORE_COLUMN,
@@ -32,6 +34,8 @@ RESULT_COLUMNS = [
 ]
 
 DISPLAY_COLUMNS = [
+    RATING_COLUMN,
+    DATE_COLUMN,
     TEXT_COLUMN,
     CLEAN_TEXT_COLUMN,
     PREDICTED_LABEL_COLUMN,
@@ -43,7 +47,10 @@ DISPLAY_COLUMNS = [
 
 SAMPLE_CSV_PATH = Path("output/sample_hasil_umux_vader.csv")
 SAMPLE_EXCEL_PATH = Path("output/sample_hasil_umux_vader.xlsx")
+SUMMARY_REPORT_PATH = Path("output/summary_report.txt")
 TRAINING_REPORT_PATH = Path("output/training_classification_report.txt")
+TRAINING_EVALUATION_PATH = Path("output/training_evaluation.xlsx")
+MISCLASSIFIED_REVIEWS_PATH = Path("output/misclassified_reviews.csv")
 TOPIC_SUMMARY_PATH = Path("output/topic_summary.csv")
 TOPIC_KEYWORDS_PATH = Path("output/topic_keywords.csv")
 DOCUMENT_TOPICS_PATH = Path("output/document_topics.csv")
@@ -55,8 +62,13 @@ def read_csv(path):
 
 
 @st.cache_data(show_spinner=False)
-def read_excel(path):
-    return pd.read_excel(path, sheet_name="detail_result")
+def read_excel(path, sheet_name="detail_result"):
+    return pd.read_excel(path, sheet_name=sheet_name)
+
+
+@st.cache_data(show_spinner=False)
+def read_excel_sheets(path):
+    return pd.read_excel(path, sheet_name=None)
 
 
 @st.cache_data(show_spinner=False)
@@ -90,12 +102,48 @@ def load_repository_result():
     return None, None
 
 
+def load_topic_modeling_data():
+    topic_summary = read_csv(TOPIC_SUMMARY_PATH) if TOPIC_SUMMARY_PATH.exists() else None
+    topic_keywords = read_csv(TOPIC_KEYWORDS_PATH) if TOPIC_KEYWORDS_PATH.exists() else None
+    document_topics = read_csv(DOCUMENT_TOPICS_PATH) if DOCUMENT_TOPICS_PATH.exists() else None
+
+    for topic_df in [topic_summary, topic_keywords, document_topics]:
+        if topic_df is not None and not topic_df.empty:
+            add_topic_label(topic_df)
+
+    return topic_summary, topic_keywords, document_topics
+
+
+def load_misclassification_data():
+    if MISCLASSIFIED_REVIEWS_PATH.exists():
+        return read_csv(MISCLASSIFIED_REVIEWS_PATH)
+
+    return None
+
+
+def add_topic_label(df):
+    if "topic_label" in df.columns:
+        return df
+
+    if {"umux_dimension", "topic_id"}.issubset(df.columns):
+        df["topic_label"] = (
+            df["umux_dimension"].astype(str)
+            + " - Topik "
+            + df["topic_id"].astype(str)
+        )
+
+    return df
+
+
 def prepare_result_data(df):
     df = df.copy()
 
-    for column in [PREDICTED_LABEL_COLUMN, VADER_COMPOUND_COLUMN, UMUX_SCORE_COLUMN]:
+    for column in [PREDICTED_LABEL_COLUMN, VADER_COMPOUND_COLUMN, UMUX_SCORE_COLUMN, RATING_COLUMN]:
         if column in df.columns:
             df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    if DATE_COLUMN in df.columns:
+        df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
 
     return df.dropna(subset=RESULT_COLUMNS)
 
@@ -127,58 +175,99 @@ def render_data_source_control():
     return load_repository_result()
 
 
-def sidebar_filter(df):
-    st.sidebar.header("Filter Data")
+def topic_document_filter(df, document_topics, selected_topics):
+    if document_topics is None or document_topics.empty or "topic_label" not in document_topics.columns:
+        return df
+
+    if not selected_topics:
+        return df.iloc[0:0].copy()
+
+    topic_docs = document_topics[document_topics["topic_label"].isin(selected_topics)].copy()
+    if topic_docs.empty:
+        return df.iloc[0:0].copy()
+
+    if TEXT_COLUMN in df.columns and TEXT_COLUMN in topic_docs.columns:
+        return df[df[TEXT_COLUMN].astype(str).isin(topic_docs[TEXT_COLUMN].astype(str))].copy()
+
+    if CLEAN_TEXT_COLUMN in df.columns and CLEAN_TEXT_COLUMN in topic_docs.columns:
+        return df[
+            df[CLEAN_TEXT_COLUMN].astype(str).isin(topic_docs[CLEAN_TEXT_COLUMN].astype(str))
+        ].copy()
+
+    return df
+
+
+def apply_sidebar_filters(df, document_topics):
+    st.sidebar.header("Filter")
     filtered_df = df.copy()
 
-    dimension_options = sorted(
-        filtered_df[PREDICTED_DIMENSION_COLUMN].dropna().astype(str).unique()
-    )
-    if dimension_options:
-        selected_dimensions = st.sidebar.multiselect(
-            "Dimensi UMUX-Lite",
-            options=dimension_options,
-            default=dimension_options,
+    if RATING_COLUMN in filtered_df.columns and filtered_df[RATING_COLUMN].notna().any():
+        rating_options = sorted(filtered_df[RATING_COLUMN].dropna().unique())
+        selected_ratings = st.sidebar.multiselect(
+            "Rating",
+            options=rating_options,
+            default=rating_options,
         )
-        filtered_df = filtered_df[
-            filtered_df[PREDICTED_DIMENSION_COLUMN].astype(str).isin(selected_dimensions)
-        ]
+        filtered_df = filtered_df[filtered_df[RATING_COLUMN].isin(selected_ratings)]
 
-    sentiment_options = sorted(
-        filtered_df[SENTIMENT_CATEGORY_COLUMN].dropna().astype(str).unique()
+    label_options = sorted(filtered_df[PREDICTED_LABEL_COLUMN].dropna().unique())
+    selected_labels = st.sidebar.multiselect(
+        "Label UMUX-Lite",
+        options=label_options,
+        default=label_options,
     )
-    if sentiment_options:
-        selected_sentiments = st.sidebar.multiselect(
-            "Kategori sentimen",
-            options=sentiment_options,
-            default=sentiment_options,
-        )
-        filtered_df = filtered_df[
-            filtered_df[SENTIMENT_CATEGORY_COLUMN].astype(str).isin(selected_sentiments)
-        ]
+    filtered_df = filtered_df[filtered_df[PREDICTED_LABEL_COLUMN].isin(selected_labels)]
 
-    if filtered_df.empty:
-        return filtered_df
-
-    min_score = float(filtered_df[UMUX_SCORE_COLUMN].min())
-    max_score = float(filtered_df[UMUX_SCORE_COLUMN].max())
-
-    if min_score == max_score:
-        st.sidebar.caption(f"Skor UMUX-Lite: {min_score:.2f}")
-        return filtered_df
-
-    selected_score_range = st.sidebar.slider(
-        "Rentang skor UMUX-Lite",
-        min_value=1.0,
-        max_value=7.0,
-        value=(max(1.0, min_score), min(7.0, max_score)),
-        step=0.1,
+    sentiment_options = sorted(filtered_df[SENTIMENT_CATEGORY_COLUMN].dropna().astype(str).unique())
+    selected_sentiments = st.sidebar.multiselect(
+        "Sentiment category",
+        options=sentiment_options,
+        default=sentiment_options,
     )
-
-    return filtered_df[
-        (filtered_df[UMUX_SCORE_COLUMN] >= selected_score_range[0])
-        & (filtered_df[UMUX_SCORE_COLUMN] <= selected_score_range[1])
+    filtered_df = filtered_df[
+        filtered_df[SENTIMENT_CATEGORY_COLUMN].astype(str).isin(selected_sentiments)
     ]
+
+    selected_topics = []
+    if document_topics is not None and not document_topics.empty and "topic_label" in document_topics.columns:
+        topic_options = sorted(document_topics["topic_label"].dropna().astype(str).unique())
+        selected_topics = st.sidebar.multiselect(
+            "Topic",
+            options=topic_options,
+            default=topic_options,
+        )
+
+        if set(selected_topics) != set(topic_options):
+            filtered_df = topic_document_filter(filtered_df, document_topics, selected_topics)
+    else:
+        st.sidebar.caption("Topic belum tersedia. Jalankan run_topic_modeling.py.")
+
+    if DATE_COLUMN in filtered_df.columns and filtered_df[DATE_COLUMN].notna().any():
+        min_date = filtered_df[DATE_COLUMN].min().date()
+        max_date = filtered_df[DATE_COLUMN].max().date()
+        selected_date_range = st.sidebar.date_input(
+            "Rentang tanggal",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
+        )
+
+        if isinstance(selected_date_range, tuple) and len(selected_date_range) == 2:
+            start_date, end_date = selected_date_range
+            filtered_df = filtered_df[
+                (filtered_df[DATE_COLUMN].dt.date >= start_date)
+                & (filtered_df[DATE_COLUMN].dt.date <= end_date)
+            ]
+
+    return filtered_df, {
+        "labels": selected_labels,
+        "sentiments": selected_sentiments,
+        "topics": selected_topics,
+    }
+
+
+def available_columns(df, columns):
+    return [column for column in columns if column in df.columns]
 
 
 def show_summary_metrics(df):
@@ -186,7 +275,6 @@ def show_summary_metrics(df):
     relevant_df = df[df[PREDICTED_LABEL_COLUMN].isin([1, 2, 3])].copy()
     total_relevant = len(relevant_df)
     total_irrelevant = total_review - total_relevant
-
     avg_compound = df[VADER_COMPOUND_COLUMN].mean()
     avg_umux_score = relevant_df[UMUX_SCORE_COLUMN].mean()
 
@@ -198,68 +286,123 @@ def show_summary_metrics(df):
     col5.metric("Rata-rata UMUX 1-7", f"{avg_umux_score:.2f}")
 
 
-def show_training_report():
-    if not TRAINING_REPORT_PATH.exists():
-        return
+def show_main_summary(df):
+    st.subheader("Ringkasan Utama")
+    show_summary_metrics(df)
 
-    st.subheader("Evaluasi Training Model")
+    col1, col2 = st.columns(2)
+    with col1:
+        show_label_distribution(df)
+    with col2:
+        show_sentiment_distribution(df)
 
-    report_text = read_text_file(TRAINING_REPORT_PATH)
-    with st.expander("Lihat classification report UMUX-Lite labeler"):
-        st.code(report_text, language="text")
+    if SUMMARY_REPORT_PATH.exists():
+        with st.expander("Ringkasan teks hasil analisis"):
+            st.text(read_text_file(SUMMARY_REPORT_PATH))
 
-    st.download_button(
-        label="Download classification report",
-        data=report_text.encode("utf-8"),
-        file_name=TRAINING_REPORT_PATH.name,
-        mime="text/plain",
+
+def show_dataset_overview(df):
+    st.subheader("Overview Dataset")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Jumlah Baris", f"{len(df):,}")
+    col2.metric("Jumlah Kolom", f"{len(df.columns):,}")
+    col3.metric("Kolom Teks Terisi", f"{df[TEXT_COLUMN].notna().sum():,}" if TEXT_COLUMN in df else "-")
+    col4.metric("Duplikasi Review", f"{df[TEXT_COLUMN].duplicated().sum():,}" if TEXT_COLUMN in df else "-")
+
+    if DATE_COLUMN in df.columns and df[DATE_COLUMN].notna().any():
+        date_df = df.dropna(subset=[DATE_COLUMN]).copy()
+        date_df["tanggal"] = date_df[DATE_COLUMN].dt.date
+        trend_df = date_df.groupby("tanggal").size().reset_index(name="total_review")
+        fig = px.line(trend_df, x="tanggal", y="total_review", markers=True, title="Tren Jumlah Review")
+        fig.update_layout(xaxis_title="Tanggal", yaxis_title="Jumlah Review")
+        st.plotly_chart(fig, use_container_width=True)
+
+    if RATING_COLUMN in df.columns and df[RATING_COLUMN].notna().any():
+        rating_df = df[RATING_COLUMN].value_counts().sort_index().reset_index()
+        rating_df.columns = ["rating", "total_review"]
+        fig = px.bar(rating_df, x="rating", y="total_review", text="total_review", title="Distribusi Rating")
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def show_umux_analysis(df):
+    st.subheader("UMUX-Lite Analysis")
+    col1, col2 = st.columns(2)
+    with col1:
+        show_label_distribution(df)
+    with col2:
+        show_dimension_distribution(df)
+
+    show_umux_score_by_dimension(df)
+
+
+def show_vader_analysis(df):
+    st.subheader("VADER Sentiment Analysis")
+    col1, col2 = st.columns(2)
+    with col1:
+        show_sentiment_distribution(df)
+    with col2:
+        sentiment_score_df = (
+            df.groupby(SENTIMENT_CATEGORY_COLUMN)
+            .agg(
+                total_review=(SENTIMENT_CATEGORY_COLUMN, "count"),
+                avg_compound=(VADER_COMPOUND_COLUMN, "mean"),
+            )
+            .reset_index()
+        )
+        fig = px.bar(
+            sentiment_score_df,
+            x=SENTIMENT_CATEGORY_COLUMN,
+            y="avg_compound",
+            text=sentiment_score_df["avg_compound"].round(4),
+            title="Rata-rata Compound per Sentimen",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def show_umux_vader_analysis(df):
+    st.subheader("UMUX-Lite x VADER Analysis")
+    show_compound_vs_umux_score(df)
+
+    heatmap_df = (
+        df.groupby([PREDICTED_DIMENSION_COLUMN, SENTIMENT_CATEGORY_COLUMN])
+        .size()
+        .reset_index(name="total_review")
     )
+    fig = px.density_heatmap(
+        heatmap_df,
+        x=SENTIMENT_CATEGORY_COLUMN,
+        y=PREDICTED_DIMENSION_COLUMN,
+        z="total_review",
+        text_auto=True,
+        title="Distribusi UMUX-Lite x Sentimen",
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 
-def load_topic_modeling_data():
-    topic_summary = read_csv(TOPIC_SUMMARY_PATH) if TOPIC_SUMMARY_PATH.exists() else None
-    topic_keywords = read_csv(TOPIC_KEYWORDS_PATH) if TOPIC_KEYWORDS_PATH.exists() else None
-    document_topics = read_csv(DOCUMENT_TOPICS_PATH) if DOCUMENT_TOPICS_PATH.exists() else None
-
-    return topic_summary, topic_keywords, document_topics
-
-
-def filter_topic_dataframe(df, selected_dimensions):
-    if df is None or df.empty or "umux_dimension" not in df.columns:
+def filter_topic_dataframe(df, selected_topics):
+    if df is None or df.empty or "topic_label" not in df.columns:
         return df
 
-    return df[df["umux_dimension"].astype(str).isin(selected_dimensions)].copy()
+    if not selected_topics:
+        return df.iloc[0:0].copy()
+
+    return df[df["topic_label"].astype(str).isin(selected_topics)].copy()
 
 
-def show_topic_modeling_results():
-    topic_summary, topic_keywords, document_topics = load_topic_modeling_data()
+def show_topic_modeling_results(topic_summary, topic_keywords, document_topics, selected_topics):
+    st.subheader("Topic Modeling per UMUX-Lite Label")
 
     if topic_summary is None or topic_summary.empty:
+        st.info("File topic_summary.csv belum tersedia. Jalankan python run_topic_modeling.py.")
         return
 
-    st.subheader("Topic Modeling UMUX-Lite")
-
-    dimension_options = sorted(topic_summary["umux_dimension"].dropna().astype(str).unique())
-    if not dimension_options:
-        st.info("File topic modeling belum memiliki kolom dimensi yang bisa ditampilkan.")
-        return
-
-    selected_dimensions = st.multiselect(
-        "Filter dimensi topic modeling",
-        options=dimension_options,
-        default=dimension_options,
-    )
-
-    if not selected_dimensions:
-        st.warning("Pilih minimal satu dimensi untuk menampilkan topic modeling.")
-        return
-
-    filtered_summary = filter_topic_dataframe(topic_summary, selected_dimensions)
-    filtered_keywords = filter_topic_dataframe(topic_keywords, selected_dimensions)
-    filtered_documents = filter_topic_dataframe(document_topics, selected_dimensions)
+    filtered_summary = filter_topic_dataframe(topic_summary, selected_topics)
+    filtered_keywords = filter_topic_dataframe(topic_keywords, selected_topics)
+    filtered_documents = filter_topic_dataframe(document_topics, selected_topics)
 
     if filtered_summary.empty:
-        st.warning("Tidak ada topic modeling yang sesuai dengan filter.")
+        st.warning("Tidak ada topik yang sesuai dengan filter.")
         return
 
     total_topics = len(filtered_summary)
@@ -275,32 +418,17 @@ def show_topic_modeling_results():
     col2.metric("Review Bertopik", f"{total_topic_reviews:,}")
     col3.metric("Rata-rata UMUX Topik", f"{avg_topic_score:.2f}")
 
-    display_summary = filtered_summary.copy()
-    display_summary["topic_label"] = (
-        display_summary["umux_dimension"].astype(str)
-        + " - Topik "
-        + display_summary["topic_id"].astype(str)
-    )
-
-    topic_hover_columns = [
-        column
-        for column in [
-            "top_keywords",
-            "topic_interpretation_initial",
-            "avg_vader_compound",
-            "avg_umux_score_1_7",
-        ]
-        if column in display_summary.columns
-    ]
-
     fig = px.bar(
-        display_summary.sort_values("total_review", ascending=True),
+        filtered_summary.sort_values("total_review", ascending=True),
         x="total_review",
         y="topic_label",
         color="umux_dimension",
         orientation="h",
         text="total_review",
-        hover_data=topic_hover_columns,
+        hover_data=available_columns(
+            filtered_summary,
+            ["top_keywords", "topic_interpretation_initial", "avg_vader_compound", "avg_umux_score_1_7"],
+        ),
         title="Jumlah Review per Topik",
     )
     fig.update_layout(xaxis_title="Jumlah Review", yaxis_title="Topik")
@@ -311,30 +439,7 @@ def show_topic_modeling_results():
     )
 
     with tab_summary:
-        summary_columns = [
-            "umux_label",
-            "umux_dimension",
-            "topic_id",
-            "total_review",
-            "top_keywords",
-            "topic_interpretation_initial",
-            "positive_count",
-            "neutral_count",
-            "negative_count",
-            "positive_percentage",
-            "neutral_percentage",
-            "negative_percentage",
-            "avg_vader_compound",
-            "avg_umux_score_1_7",
-        ]
-        available_summary_columns = [
-            column for column in summary_columns if column in filtered_summary.columns
-        ]
-        st.dataframe(
-            filtered_summary[available_summary_columns],
-            use_container_width=True,
-            height=360,
-        )
+        st.dataframe(filtered_summary, use_container_width=True, height=360)
 
     with tab_keywords:
         if filtered_keywords is None or filtered_keywords.empty:
@@ -356,54 +461,172 @@ def show_topic_modeling_results():
                 VADER_COMPOUND_COLUMN,
                 UMUX_SCORE_COLUMN,
             ]
-            available_document_columns = [
-                column for column in document_columns if column in filtered_documents.columns
-            ]
             st.dataframe(
-                filtered_documents[available_document_columns],
+                filtered_documents[available_columns(filtered_documents, document_columns)],
                 use_container_width=True,
                 height=420,
             )
 
-    download_col1, download_col2, download_col3 = st.columns(3)
 
-    with download_col1:
+def show_topic_sentiment_interpretation(topic_summary, selected_topics):
+    st.subheader("Topic x Sentiment Interpretation")
+
+    if topic_summary is None or topic_summary.empty:
+        st.info("File topic_summary.csv belum tersedia.")
+        return
+
+    filtered_summary = filter_topic_dataframe(topic_summary, selected_topics)
+    required_columns = ["topic_label", "positive_count", "neutral_count", "negative_count"]
+    if filtered_summary.empty or not set(required_columns).issubset(filtered_summary.columns):
+        st.info("Ringkasan topic x sentiment belum tersedia.")
+        return
+
+    melted_df = filtered_summary.melt(
+        id_vars=["topic_label", "umux_dimension", "top_keywords", "topic_interpretation_initial"],
+        value_vars=["positive_count", "neutral_count", "negative_count"],
+        var_name="sentiment",
+        value_name="total_review",
+    )
+    melted_df["sentiment"] = melted_df["sentiment"].str.replace("_count", "", regex=False)
+
+    fig = px.bar(
+        melted_df,
+        x="topic_label",
+        y="total_review",
+        color="sentiment",
+        hover_data=["top_keywords", "topic_interpretation_initial"],
+        title="Komposisi Sentimen per Topik",
+    )
+    fig.update_layout(xaxis_title="Topik", yaxis_title="Jumlah Review", xaxis_tickangle=-35)
+    st.plotly_chart(fig, use_container_width=True)
+
+    interpretation_columns = [
+        "topic_label",
+        "top_keywords",
+        "topic_interpretation_initial",
+        "positive_percentage",
+        "neutral_percentage",
+        "negative_percentage",
+        "avg_vader_compound",
+        "avg_umux_score_1_7",
+    ]
+    st.dataframe(
+        filtered_summary[available_columns(filtered_summary, interpretation_columns)],
+        use_container_width=True,
+        height=360,
+    )
+
+
+def show_model_evaluation():
+    st.subheader("Model Evaluation")
+
+    if TRAINING_REPORT_PATH.exists():
+        report_text = read_text_file(TRAINING_REPORT_PATH)
+        st.code(report_text, language="text")
         st.download_button(
-            label="Download topic summary",
-            data=filtered_summary.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
-            file_name="filtered_topic_summary.csv",
-            mime="text/csv",
+            label="Download classification report",
+            data=report_text.encode("utf-8"),
+            file_name=TRAINING_REPORT_PATH.name,
+            mime="text/plain",
         )
+    else:
+        st.info("File training_classification_report.txt belum tersedia.")
 
-    if filtered_keywords is not None and not filtered_keywords.empty:
-        with download_col2:
-            st.download_button(
-                label="Download topic keywords",
-                data=filtered_keywords.to_csv(index=False, encoding="utf-8-sig").encode(
-                    "utf-8-sig"
-                ),
-                file_name="filtered_topic_keywords.csv",
-                mime="text/csv",
-            )
+    if TRAINING_EVALUATION_PATH.exists():
+        with st.expander("Lihat sheet training_evaluation.xlsx"):
+            sheets = read_excel_sheets(TRAINING_EVALUATION_PATH)
+            for sheet_name, sheet_df in sheets.items():
+                st.write(sheet_name)
+                st.dataframe(sheet_df, use_container_width=True, height=260)
 
-    if filtered_documents is not None and not filtered_documents.empty:
-        with download_col3:
-            st.download_button(
-                label="Download document topics",
-                data=filtered_documents.to_csv(index=False, encoding="utf-8-sig").encode(
-                    "utf-8-sig"
-                ),
-                file_name="filtered_document_topics.csv",
-                mime="text/csv",
+
+def show_misclassification_analysis(filtered_df):
+    st.subheader("Misclassification Analysis")
+
+    misclassified_df = load_misclassification_data()
+    if misclassified_df is None or misclassified_df.empty:
+        st.info("File misclassified_reviews.csv belum tersedia.")
+        return
+
+    if TEXT_COLUMN in filtered_df.columns and TEXT_COLUMN in misclassified_df.columns:
+        misclassified_df = misclassified_df[
+            misclassified_df[TEXT_COLUMN].astype(str).isin(filtered_df[TEXT_COLUMN].astype(str))
+        ].copy()
+    elif CLEAN_TEXT_COLUMN in filtered_df.columns and CLEAN_TEXT_COLUMN in misclassified_df.columns:
+        misclassified_df = misclassified_df[
+            misclassified_df[CLEAN_TEXT_COLUMN].astype(str).isin(
+                filtered_df[CLEAN_TEXT_COLUMN].astype(str)
             )
+        ].copy()
+
+    if misclassified_df.empty:
+        st.info("Tidak ada misclassification yang sesuai dengan filter saat ini.")
+        return
+
+    col1, col2 = st.columns(2)
+    col1.metric("Total Misclassified", f"{len(misclassified_df):,}")
+    if "error_type" in misclassified_df.columns:
+        col2.metric("Tipe Error", f"{misclassified_df['error_type'].nunique():,}")
+
+    if "error_type" in misclassified_df.columns:
+        error_df = misclassified_df["error_type"].value_counts().reset_index()
+        error_df.columns = ["error_type", "total_review"]
+        fig = px.bar(
+            error_df,
+            x="total_review",
+            y="error_type",
+            orientation="h",
+            text="total_review",
+            title="Distribusi Tipe Kesalahan Klasifikasi",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    table_columns = [
+        TEXT_COLUMN,
+        CLEAN_TEXT_COLUMN,
+        "actual_umux_dimension",
+        PREDICTED_DIMENSION_COLUMN,
+        "error_type",
+        SENTIMENT_CATEGORY_COLUMN,
+        VADER_COMPOUND_COLUMN,
+        UMUX_SCORE_COLUMN,
+        RATING_COLUMN,
+        DATE_COLUMN,
+    ]
+    st.dataframe(
+        misclassified_df[available_columns(misclassified_df, table_columns)],
+        use_container_width=True,
+        height=460,
+    )
+
+
+def show_data_explorer(df):
+    st.subheader("Data Explorer & Download")
+
+    default_columns = available_columns(df, DISPLAY_COLUMNS)
+    selected_columns = st.multiselect(
+        "Pilih kolom",
+        options=list(df.columns),
+        default=default_columns or list(df.columns),
+    )
+
+    if not selected_columns:
+        st.warning("Pilih minimal satu kolom.")
+        return
+
+    st.dataframe(df[selected_columns], use_container_width=True, height=560)
+    csv_data = df[selected_columns].to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    st.download_button(
+        label="Download data terfilter sebagai CSV",
+        data=csv_data,
+        file_name="filtered_umux_vader_result.csv",
+        mime="text/csv",
+    )
 
 
 def show_label_distribution(df):
-    st.subheader("Distribusi Label UMUX-Lite")
-
     label_df = df[PREDICTED_LABEL_COLUMN].value_counts().sort_index().reset_index()
     label_df.columns = ["label", "total_review"]
-
     fig = px.bar(
         label_df,
         x="label",
@@ -416,11 +639,8 @@ def show_label_distribution(df):
 
 
 def show_dimension_distribution(df):
-    st.subheader("Distribusi Dimensi UMUX-Lite")
-
     dimension_df = df[PREDICTED_DIMENSION_COLUMN].value_counts().reset_index()
     dimension_df.columns = ["dimension", "total_review"]
-
     fig = px.bar(
         dimension_df,
         x="total_review",
@@ -434,11 +654,8 @@ def show_dimension_distribution(df):
 
 
 def show_sentiment_distribution(df):
-    st.subheader("Distribusi Sentimen VADER")
-
     sentiment_df = df[SENTIMENT_CATEGORY_COLUMN].value_counts().reset_index()
     sentiment_df.columns = ["sentiment_category", "total_review"]
-
     fig = px.pie(
         sentiment_df,
         names="sentiment_category",
@@ -450,8 +667,6 @@ def show_sentiment_distribution(df):
 
 
 def show_umux_score_by_dimension(df):
-    st.subheader("Rata-rata Skor UMUX-Lite per Dimensi")
-
     relevant_df = df[df[PREDICTED_LABEL_COLUMN].isin([1, 2, 3])].copy()
     if relevant_df.empty:
         st.info("Belum ada review relevan UMUX-Lite pada data terfilter.")
@@ -463,7 +678,6 @@ def show_umux_score_by_dimension(df):
         .reset_index()
     )
     score_df["average_score"] = score_df["average_score"].round(2)
-
     fig = px.bar(
         score_df,
         x=PREDICTED_DIMENSION_COLUMN,
@@ -480,14 +694,10 @@ def show_umux_score_by_dimension(df):
 
 
 def show_compound_vs_umux_score(df):
-    st.subheader("Hubungan VADER Compound Score dan Skor UMUX-Lite")
-
-    hover_columns = [
-        column
-        for column in [TEXT_COLUMN, PREDICTED_DIMENSION_COLUMN, SENTIMENT_CATEGORY_COLUMN]
-        if column in df.columns
-    ]
-
+    hover_columns = available_columns(
+        df,
+        [TEXT_COLUMN, PREDICTED_DIMENSION_COLUMN, SENTIMENT_CATEGORY_COLUMN, RATING_COLUMN],
+    )
     fig = px.scatter(
         df,
         x=VADER_COMPOUND_COLUMN,
@@ -503,31 +713,11 @@ def show_compound_vs_umux_score(df):
     st.plotly_chart(fig, use_container_width=True)
 
 
-def show_detail_table(df):
-    st.subheader("Detail Hasil Analisis")
-
-    available_columns = [column for column in DISPLAY_COLUMNS if column in df.columns]
-    if not available_columns:
-        available_columns = list(df.columns)
-
-    st.dataframe(df[available_columns], use_container_width=True, height=500)
-
-    csv_data = df[available_columns].to_csv(index=False, encoding="utf-8-sig").encode(
-        "utf-8-sig"
-    )
-    st.download_button(
-        label="Download data terfilter sebagai CSV",
-        data=csv_data,
-        file_name="filtered_umux_vader_result.csv",
-        mime="text/csv",
-    )
-
-
 def main():
     st.title("Dashboard UMUX-Lite dan VADER")
     st.write(
         "Dashboard hasil analisis review aplikasi JMO menggunakan klasifikasi "
-        "UMUX-Lite dan VADER Sentiment Analysis."
+        "UMUX-Lite, VADER Sentiment Analysis, dan topic modeling."
     )
 
     df, data_source = render_data_source_control()
@@ -537,7 +727,10 @@ def main():
             "File hasil analisis belum ditemukan. Jalankan pipeline terlebih dahulu "
             "atau upload file CSV/XLSX hasil pipeline melalui sidebar."
         )
-        st.code("python train_umux_labeler.py\npython run_umux_vader_pipeline.py", language="bash")
+        st.code(
+            "python train_umux_labeler.py\npython run_umux_vader_pipeline.py\npython run_topic_modeling.py",
+            language="bash",
+        )
         st.stop()
 
     st.sidebar.caption(f"Data aktif: {data_source}")
@@ -556,37 +749,72 @@ def main():
         st.warning("Data tidak memiliki baris valid setelah pembersihan nilai numerik.")
         st.stop()
 
-    filtered_df = sidebar_filter(df)
+    topic_summary, topic_keywords, document_topics = load_topic_modeling_data()
+    filtered_df, filter_state = apply_sidebar_filters(df, document_topics)
+    selected_topics = filter_state["topics"]
+
+    if (
+        not selected_topics
+        and (document_topics is None or document_topics.empty)
+        and topic_summary is not None
+        and not topic_summary.empty
+        and "topic_label" in topic_summary.columns
+    ):
+        selected_topics = sorted(topic_summary["topic_label"].dropna().astype(str).unique())
+
     if filtered_df.empty:
         st.warning("Tidak ada data yang sesuai dengan filter.")
         st.stop()
 
-    show_summary_metrics(filtered_df)
+    tabs = st.tabs(
+        [
+            "1 Ringkasan Utama",
+            "2 Overview Dataset",
+            "3 UMUX-Lite Analysis",
+            "4 VADER Sentiment",
+            "5 UMUX x VADER",
+            "6 Topic Modeling",
+            "7 Topic x Sentiment",
+            "8 Model Evaluation",
+            "9 Misclassification",
+            "10 Data Explorer",
+        ]
+    )
 
-    st.divider()
-    show_training_report()
+    with tabs[0]:
+        show_main_summary(filtered_df)
 
-    st.divider()
-    show_topic_modeling_results()
+    with tabs[1]:
+        show_dataset_overview(filtered_df)
 
-    st.divider()
-    col1, col2 = st.columns(2)
-    with col1:
-        show_label_distribution(filtered_df)
-    with col2:
-        show_sentiment_distribution(filtered_df)
+    with tabs[2]:
+        show_umux_analysis(filtered_df)
 
-    st.divider()
-    show_dimension_distribution(filtered_df)
+    with tabs[3]:
+        show_vader_analysis(filtered_df)
 
-    st.divider()
-    show_umux_score_by_dimension(filtered_df)
+    with tabs[4]:
+        show_umux_vader_analysis(filtered_df)
 
-    st.divider()
-    show_compound_vs_umux_score(filtered_df)
+    with tabs[5]:
+        show_topic_modeling_results(
+            topic_summary,
+            topic_keywords,
+            document_topics,
+            selected_topics,
+        )
 
-    st.divider()
-    show_detail_table(filtered_df)
+    with tabs[6]:
+        show_topic_sentiment_interpretation(topic_summary, selected_topics)
+
+    with tabs[7]:
+        show_model_evaluation()
+
+    with tabs[8]:
+        show_misclassification_analysis(filtered_df)
+
+    with tabs[9]:
+        show_data_explorer(filtered_df)
 
 
 if __name__ == "__main__":
