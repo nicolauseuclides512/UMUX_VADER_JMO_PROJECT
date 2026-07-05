@@ -564,7 +564,7 @@ def show_topic_sentiment_interpretation(topic_summary, selected_topics):
         id_vars=topic_id_columns,
         value_vars=["positive_count", "neutral_count", "negative_count"],
         var_name="sentiment",
-        value_name="total_review",
+        value_name="sentiment_review_count",
     )
     melted_df["sentiment"] = melted_df["sentiment"].str.replace("_count", "", regex=False)
 
@@ -575,7 +575,7 @@ def show_topic_sentiment_interpretation(topic_summary, selected_topics):
     fig = px.bar(
         melted_df,
         x="topic_label",
-        y="total_review",
+        y="sentiment_review_count",
         color="sentiment",
         hover_data=hover_columns,
         title="Komposisi Sentimen per Topik",
